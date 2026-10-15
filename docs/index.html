@@ -599,7 +599,8 @@ const STRINGS = {
   "welcome.home": ["I live in", "Moro em"],
   "welcome.homeNone": ["Choose your state (optional)", "Escolha o estado (opcional)"],
   "welcome.abroad": ["Outside Brazil", "Fora do Brasil"],
-  "welcome.workHint": ["Remote roles always show.", "Vagas remotas aparecem sempre."],
+  "welcome.workHint": ["Roles abroad are for you too: narrow this only if you want to work in person near you. Remote roles always show.",
+                       "Vagas no exterior também são para você: só restrinja se quiser trabalhar presencialmente perto de casa. Vagas remotas aparecem sempre."],
   "work.state": [uf => uf ? `In my state (${uf})` : "In my state", uf => uf ? `No meu estado (${uf})` : "No meu estado"],
   "work.Brazil": ["Anywhere in Brazil", "Em todo o Brasil"], "work.LatAm": ["Latin America", "América Latina"],
   "work.US/Canada": ["US and Canada", "EUA e Canadá"], "work.Europe": ["Europe", "Europa"],
@@ -688,6 +689,7 @@ const STRINGS = {
   "sort.label": ["Sort", "Ordenar"], "sort.match": ["Best résumé match", "Melhor match"], "sort.fit": ["Best fit", "Mais compatíveis"],
   "sort.deadline": ["Deadline", "Prazo"], "sort.added": ["Newest", "Mais novas"], "sort.org": ["Company A–Z", "Empresa A–Z"],
   "count": [(n, d) => `${n} ${n === "1" ? "role" : "roles"} · updated ${d}`, (n, d) => `${n} ${n === "1" ? "vaga" : "vagas"} · atualizado em ${d}`],
+  "count.inAll": [n => `${n} more in All · see`, n => `mais ${n} em Todas · ver`],
   "more": [n => `Show ${n} more`, n => `Mostrar mais ${n}`], "loading": ["Loading opportunities…", "Carregando oportunidades…"],
   "loadError": ["Could not load today's data. Check your connection and reload the page.", "Não foi possível carregar os dados de hoje. Verifique a conexão e recarregue a página."],
   "legend.button": ["How to read", "Como ler"],
@@ -1356,7 +1358,8 @@ $("welcome-resume").addEventListener("click", showResume);
 
 // ------------------------------------------------------------------ welcome
 // The answers on the welcome screen before you confirm; each question takes one or more.
-const chosen = { fields: [], levels: [], places: [], home: "", work: [] };
+// "Anywhere" starts picked: studying in Brazil doesn't mean only roles in Brazil.
+const chosen = { fields: [], levels: [], places: [], home: "", work: ["any"] };
 const welcomeReady = () => { $("start").disabled = !(chosen.fields.length && chosen.levels.length && chosen.places.length && chosen.work.length); };
 const toggleIn = (list, item) => list.includes(item) ? list.filter(x => x !== item) : [...list, item];
 function drawPlaces() {
@@ -1381,7 +1384,7 @@ function showWelcome() {
   $("welcome").hidden = false;
   $("to-top").hidden = true;
   Object.assign(chosen, { fields: [...(profile?.fields || [])], levels: [...(profile?.levels || [])], places: [...(profile?.places || [])],
-    home: profile?.home || "", work: [...(profile?.work || [])] });
+    home: profile?.home || "", work: profile?.work?.length ? [...profile.work] : ["any"] });
   drawPlaces();
   welcomeReady();
   window.scrollTo(0, 0);
@@ -1396,10 +1399,7 @@ for (const [box, selector, key, attr] of [["levels", ".level", "levels", "level"
   });
 }
 $("home").addEventListener("change", e => {
-  const had = /^[A-Z]{2}$/.test(chosen.home);
-  chosen.home = e.target.value;
-  // Choosing your state for the first time also picks "In my state".
-  if (!had && /^[A-Z]{2}$/.test(chosen.home) && !chosen.work.length) chosen.work = ["state"];
+  chosen.home = e.target.value;  // only offers "In my state"; it doesn't narrow anything by itself
   drawWork(); welcomeReady();
 });
 $("work").addEventListener("click", e => {
@@ -1747,10 +1747,14 @@ function render() {
   const list = inTab.filter(i => passes(i)).sort(SORTS[sortKey()]);
   const hiddenItems = inTab.filter(i => hiddenForYou(i) && passes(i, "hidden"));  // outside your profile, with today's filters
   const hidden = hiddenItems.length;
+  // Searching in a narrow tab (Programs, New...): say how many more matches the "All" tab has.
+  const moreInAll = view.q && !["all", "saved", "applied", "hidden"].includes(view.tab)
+    ? DATA.items.filter(i => TABS[1][1](i) && passes(i)).length - list.length : 0;
   const anyOther = view.others && inTab.some(i => i._fit?.hidden);
   $("sort").value = sortKey();
   $("rows").innerHTML = list.slice(0, view.shown).map(row).join("") || emptyState(hidden);
   $("count").innerHTML = esc(t("count", fmtN(list.length), fmtDate(DATA.updated, false)))
+    + (moreInAll ? ` · <button class="linkish" data-tab-all="1">${esc(t("count.inAll", fmtN(moreInAll)))}</button>` : "")
     + (hidden ? ` · <button class="linkish" data-others="1">${esc(t("others.show", fmtN(hidden), hiddenWhy(hiddenItems)))}</button>` : "")
     + (anyOther ? ` · <button class="linkish" data-others="">${esc(t("others.hide"))}</button>` : "");
   $("others-row").hidden = !(hidden || view.others);
@@ -1895,6 +1899,7 @@ document.addEventListener("click", e => {
   if (chip) { togglePick(chip.parentElement.dataset.filter, chip.dataset.value); return rerender(); }
   const tab = e.target.closest(".tab");
   if (tab) { view.tab = tab.dataset.tab; return rerender(); }
+  if (e.target.closest("[data-tab-all]")) { view.tab = "all"; return rerender(); }
   const others = e.target.closest("[data-others]");
   if (others) { view.others = others.dataset.others; return rerender(); }
   const pill = e.target.closest("[data-clear]");
